@@ -4,7 +4,8 @@ close all
 
 %% Loading the SYNDy model from Python
 pickle = py.importlib.import_module('pickle');
-fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_dubins_car_sindy', 'rb');
+%fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_dubins_car_sindy', 'rb');
+fh = py.open('..\..\sindy_models\model_dubins_car_sindy', 'rb');
 P = pickle.load(fh);    % pickle file loaded to Python variable
 fh.close();
 
@@ -15,6 +16,7 @@ n_features = length(feature_names);
 coefficients = reshape(coefficients, [n_features, n_dim])';
 
 cp_quantile = P{'model_error'}{'quantile'};
+fprintf("cp_quantile = %5.3f \n", cp_quantile);
 
 idx_x = []; % Indices for f(x)
 idx_u = []; % Indices for g(x)*u
@@ -28,13 +30,14 @@ for i = 1: length(feature_names)
     feature_names = replace(feature_names, " ", "*");
 end
 
-%%
-
+%% Implementation of the CP-CBF
 dt = 0.01;
 T = 10;
-N = 60; % number of paths
-x0 = [rand(1,N) * 8; rand(1,N) * 6 + 1; rand(1,N) * 2*pi - pi]; % initial state
-x_d = [8; 4; 0]; % desired state
+tt = 0:dt:T;
+
+N = 100; % number of paths
+x0 = [rand(1,N) * 8 + 2; rand(1,N) * 6 + 1; rand(1,N) * 2*pi - pi]; % initial state
+x_d = [2; 4; 0]; % desired state
 
 params.v = 1.0; % velocity
 
@@ -50,7 +53,7 @@ params.d = 2;
 params.cbf_gamma0 = 15;
 
 % Exclude samples within the obstacle
-x0 = x0(:, (x0(1,:) - params.xo).^2 + (x0(2,:) - params.yo).^2 > (params.d * 1.1)^2);
+x0 = x0(:, (x0(1,:) - params.xo).^2 + (x0(2,:) - params.yo).^2 > (params.d * 1.05)^2);
 N = size(x0, 2);
 
 % Desired target point
@@ -67,10 +70,10 @@ params.feature_names = feature_names;
 params.coefficients = coefficients;
 params.idx_x = idx_x;
 params.idx_u = idx_u;
-cp_quantile = 0; 
+%cp_quantile = 0; % setting cp_quantile = 0 is equivalent to regular cbf
 dubins_learned = DubinsCarSINDy(params);
-controller_nominal = @dubins_learned.ctrlNominal;
-Kp = 10;
+controller_nominal = @dubins_learned.ctrlNominal; % proportional navigation
+Kp = 10; % gain for the proportional navigation
 controller_cpcbf = @dubins_learned.ctrlCpCbfQp;
 controller_cbf = @dubins_learned.ctrlCbfQp;
 
@@ -79,8 +82,6 @@ dubins_true = DubinsCar(params);
 dyn_true = @dubins_true.dynamics;
 %controller_cbf = @dubins_true.ctrlCbfQp;
 %controller_nominal = @dubins_true.ctrlNominal;
-
-tt = 0:dt:T;
 
 % Time history
 x_hist = cell(N, 1);
@@ -104,7 +105,7 @@ for n = 1:N
         t = tt(k);
         x = xs(k, :)';
 
-        if (x(1) - x_d(1)) ^2 + (x(2) - x_d(2)) ^2 < 0.025
+        if (x(1) - x_d(1)) ^2 + (x(2) - x_d(2)) ^2 < 0.01
             xs = xs(1:k-1, :);
             us = us(1:k-1, :);
             hs = hs(1:k-1, :);
