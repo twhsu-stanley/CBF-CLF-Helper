@@ -1,3 +1,5 @@
+This repo was originally forked from https://github.com/HybridRobotics/CBF-CLF-Helper.git
+
 # CBF-CLF-Helper
 Matlab library for Control Barrier Function (CBF) and Control Lyapunov Function (CLF) based control methods. The library is designed to let users easily implement safety controller based on CBFs and CLFs with Matlab. We provide:
 - An easy interface for construction and simulation of nonlinear control-affine systems.
