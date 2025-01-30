@@ -31,18 +31,14 @@ for i = 1: length(feature_names)
 end
 % NOTE: SINDy model with ps.PolynomialLibrary(degree = 2) worked well
 
-%% Implementation of the CP-CLF
-dt = 0.001;
-T = 5;
-tt = 0:dt:T;
-
+%% Set up the learned and true models
 % Model Parameters
 params.l = 1;    % [m]        length of pendulum
 params.m = 1;    % [kg]       mass of pendulum
 params.g = 9.81; % [m/s^2]    acceleration of gravity
 params.b = 0.01; % [s*Nm/rad] friction coefficient
 
-%params.u_max = 5;
+%params.u_max = 10;
 %params.u_min = -params.u_max;
 
 params.I = params.m*params.l^2/3; 
@@ -53,6 +49,7 @@ params.Kd = 5;
 
 params.clf.rate = 1.0;
 params.weight.slack = 100;
+params.weight.input = 6;
 
 % Learned model
 params.feature_names = feature_names;
@@ -64,7 +61,14 @@ controller_clf = @ip_learned.ctrlClfQp;
 controller_cpclf = @ip_learned.ctrlCpClfQp;
 %cp_quantile = 0; % setting cp_quantile = 0 is equivalent to using the regular clf
 
-%% Create a grid space
+% True model
+ip_true = InvertedPendulum(params);
+dyn_true = @ip_true.dynamics;
+%controller_clf = @ip_true.ctrlClfQp;
+odeSolver = @ode45;
+odeFun = dyn_true;
+
+%% Create a grid of states and sample initiall states from it
 resolution = 100;
 x_ = linspace(-pi/5, pi/5, resolution);
 y_ = linspace(-35, 35, resolution);
@@ -89,7 +93,7 @@ for i = 1:resolution
 end
 
 % Sample around the level set ip_learned.clf == clf_level as x0 
-N = 4; % number of paths
+N = 5; % number of paths
 N = min(N, size(x0, 1));
 x0 = x0(randperm(length(x0)), :); % random shuffling
 x0 = x0(1:N,:);
@@ -108,19 +112,16 @@ M = V0/c1;
 %x0 = [pi/5, 0];
 %V0 = ip_learned.clf([pi/5; 0]);
 
-%% True model
-ip_true = InvertedPendulum(params);
-dyn_true = @ip_true.dynamics;
-%controller_clf = @ip_true.ctrlClfQp;
+%% Run simulation
+dt = 0.001;
+T = 3;
+tt = 0:dt:T;
 
 % Time history
 x_hist = zeros(N, length(tt), ip_true.xdim);
 x_norm_hist = zeros(N, length(tt));
 u_hist = zeros(N, length(tt)-1);
 V_hist = zeros(N, length(tt)-1);
-
-odeSolver = @ode45;
-odeFun = dyn_true;
 
 for n = 1:N
     for k = 1:length(tt)-1
@@ -152,6 +153,7 @@ for n = 1:N
     end
 end
 
+%% Plots
 figure;
 title('Inverted Pendulum: CLF-QP States');
 subplot(2, 1, 1);
