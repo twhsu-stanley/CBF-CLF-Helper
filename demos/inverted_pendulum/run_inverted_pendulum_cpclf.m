@@ -4,8 +4,8 @@ close all
 
 %% Loading the SYNDy model from Python
 pickle = py.importlib.import_module('pickle');
-fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_inverted_pendulum_sindy', 'rb');
-%fh = py.open('..\..\sindy_models\model_inverted_pendulum_sindy', 'rb');
+%fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_inverted_pendulum_sindy', 'rb');
+fh = py.open('..\..\sindy_models\model_inverted_pendulum_sindy', 'rb');
 P = pickle.load(fh);    % pickle file loaded to Python variable
 fh.close();
 
@@ -29,15 +29,12 @@ for i = 1: length(feature_names)
 
     feature_names = replace(feature_names, " ", "*");
 end
-% NOTE: SINDy 
+% NOTE: SINDy model with ps.PolynomialLibrary(degree = 2) worked well
 
 %% Implementation of the CP-CLF
 dt = 0.001;
 T = 5;
 tt = 0:dt:T;
-
-N = 1; % number of paths
-x0 = [pi/5; 0.0];
 
 % Model Parameters
 params.l = 1;    % [m]        length of pendulum
@@ -45,7 +42,7 @@ params.m = 1;    % [kg]       mass of pendulum
 params.g = 9.81; % [m/s^2]    acceleration of gravity
 params.b = 0.01; % [s*Nm/rad] friction coefficient
 
-%params.u_max = 10;
+%params.u_max = 5;
 %params.u_min = -params.u_max;
 
 params.I = params.m*params.l^2/3; 
@@ -65,56 +62,122 @@ params.idx_u = idx_u;
 ip_learned = InvertedPendulumSINDy(params);
 controller_clf = @ip_learned.ctrlClfQp;
 controller_cpclf = @ip_learned.ctrlCpClfQp;
-%cp_quantile = 0;
+%cp_quantile = 0; % setting cp_quantile = 0 is equivalent to using the regular clf
 
-% True model
+%% Create a grid space
+resolution = 100;
+x_ = linspace(-pi/5, pi/5, resolution);
+y_ = linspace(-35, 35, resolution);
+state = zeros(resolution, resolution, 2);
+state_norm_square = zeros(resolution, resolution);
+V_ = zeros(resolution, resolution);
+for i = 1:resolution
+    for j = 1:resolution
+        state_norm_square(i,j) = x_(i)^2 + y_(j)^2;
+        V_(i,j) = ip_learned.clf([x_(i); y_(j)]);
+    end
+end
+clf_level = min([V_(1,:), V_(end,:), V_(:,1)', V_(:,end)']);
+
+x0 = [];
+for i = 1:resolution
+    for j = 1:resolution
+        if V_(i,j) <= clf_level && V_(i,j) >= clf_level - 0.01
+            x0 = [x0; [x_(i), y_(j)]];
+        end
+    end
+end
+
+% Sample around the level set ip_learned.clf == clf_level as x0 
+N = 4; % number of paths
+N = min(N, size(x0, 1));
+x0 = x0(randperm(length(x0)), :); % random shuffling
+x0 = x0(1:N,:);
+
+% Find c1: c1*||x||^2 <= V(x) <= c2*||x||^2
+ind_roa = find(V_ <= clf_level);
+c1 = min(V_(ind_roa) ./ state_norm_square(ind_roa));
+c2 = max(V_(ind_roa) ./ state_norm_square(ind_roa));
+
+% Calculate the parameters of exponential stability (M and gamma)
+V0 = clf_level;
+M = V0/c1;
+
+% Testing
+%N = 1;
+%x0 = [pi/5, 0];
+%V0 = ip_learned.clf([pi/5; 0]);
+
+%% True model
 ip_true = InvertedPendulum(params);
 dyn_true = @ip_true.dynamics;
 %controller_clf = @ip_true.ctrlClfQp;
 
 % Time history
-xs = zeros(N, length(tt), ip_true.xdim);
-us = zeros(N, length(tt)-1);
-Vs = zeros(N, length(tt)-1);
+x_hist = zeros(N, length(tt), ip_true.xdim);
+x_norm_hist = zeros(N, length(tt));
+u_hist = zeros(N, length(tt)-1);
+V_hist = zeros(N, length(tt)-1);
+
+odeSolver = @ode45;
+odeFun = dyn_true;
 
 for n = 1:N
     for k = 1:length(tt)-1
         if k == 1
-            xs(n, 1, :) = x0';
+            x_hist(n, 1, :) = x0(n,:)';
+            x_norm_hist(n, 1) = norm(x0(n,:)');
         end
 
         % Wrap angle to pi
         % *** This is crucial ***
-        xs(n, k, 1) = wrapToPi(xs(n, k, 1));
+        x_hist(n, k, 1) = wrapToPi(x_hist(n, k, 1));
 
         t = tt(k);
-        x = squeeze(xs(n, k, :));
+        x = squeeze(x_hist(n, k, :));
 
-        % Determine control input.
-        % dV_hat: analytic Vdot based on model.
+        % Controller
         %[u, slack, V, feas, comp_time] = controller_clf(x);
         [u, slack, V, feas, comp_time]  = controller_cpclf(x, 0, cp_quantile);
 
-        us(n, k) = u;
-        Vs(n, k) = V;
+        u_hist(n, k) = u;
+        V_hist(n, k) = V;
 
         % Run one time step propagation.
-        xs(n, k+1, :) = x + dyn_true(t, x, u) * dt;
+        %x_hist(n, k+1, :) = x + dyn_true(t, x, u) * dt;
+        [ts_temp, xs_temp] = odeSolver(@(t, s) odeFun(t, s, u), [t t+dt], x);
+        x_hist(n, k+1, :) = xs_temp(end, :);
+        x_norm_hist(n, k+1) = norm(squeeze(x_hist(n, k+1, :)));
+
     end
 end
 
 figure;
 title('Inverted Pendulum: CLF-QP States');
 subplot(2, 1, 1);
-plot(tt, squeeze(180 * xs(:,:, 1)/pi)); grid on
+plot(tt, squeeze(180 * x_hist(:,:,1)/pi)); grid on
 xlabel('Time (s)'); ylabel("$\theta$ (deg)",'interpreter','latex'); 
 subplot(2, 1, 2);
-plot(tt, squeeze(180 * xs(:,:, 2)/pi)); grid on
+plot(tt, squeeze(180 * x_hist(:,:,2)/pi)); grid on
 xlabel('Time (s)'); ylabel("$\dot{\theta}$ (deg/s)",'interpreter','latex'); 
 
-figure
-plot(tt(1:end-1), Vs); hold on
-plot(tt(1:end-1), Vs(1) * exp(-params.clf.rate * tt(1:end-1)), 'r--');
+figure;
+plot(tt(1:end-1), u_hist); hold on
+xlabel('Time (s)'); 
+ylabel('ut');
+grid on
+
+figure;
+plot(tt, x_norm_hist); hold on
+plot(tt(1:end-1), sqrt(M) * exp(-params.clf.rate/2 * tt(1:end-1)), 'r--');
+%plot(tt(1:end-1), sqrt(c2/c1) * x_norm_hist(:,1) * exp(-params.clf.rate/2 * tt(1:end-1)), 'g--');
+xlabel('Time (s)'); 
+ylabel('State norm: ||x||');
+grid on
+
+figure;
+plot(tt(1:end-1), V_hist); hold on
+plot(tt(1:end-1), V0 * exp(-params.clf.rate * tt(1:end-1)), 'r--');
 xlabel('Time (s)'); 
 ylabel('CP-CLF: V(x_t)');
 grid on
