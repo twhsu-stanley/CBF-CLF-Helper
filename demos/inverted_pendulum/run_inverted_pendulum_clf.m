@@ -1,4 +1,6 @@
-clear all; close all;
+clc
+clear
+close all
 
 dt = 0.02;
 sim_t = 5;

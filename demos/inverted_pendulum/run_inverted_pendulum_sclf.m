@@ -4,7 +4,7 @@ close all
 
 dt = 0.01;
 T = 5;
-N = 100; % number of paths
+N = 50; % number of paths
 
 %% Model Parameters
 params.l = 1;    % [m]        length of pendulum
