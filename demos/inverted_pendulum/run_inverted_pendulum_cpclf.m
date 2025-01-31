@@ -4,8 +4,8 @@ close all
 
 %% Loading the SYNDy model from Python
 pickle = py.importlib.import_module('pickle');
-fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_inverted_pendulum_sindy', 'rb');
-%fh = py.open('..\..\sindy_models\model_inverted_pendulum_sindy', 'rb');
+%fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_inverted_pendulum_sindy', 'rb');
+fh = py.open('..\..\sindy_models\model_inverted_pendulum_sindy', 'rb');
 P = pickle.load(fh);    % pickle file loaded to Python variable
 fh.close();
 
@@ -41,9 +41,11 @@ params.b = 0.01; % [s*Nm/rad] friction coefficient
 %params.u_max = 50;
 %params.u_min = -params.u_max;
 
-params.clf.rate = 1;
+params.clf.Q = diag([1, 0.01]);
+params.clf.R = 1;
+params.clf.rate = 2;
 params.weight.slack = 400;
-params.weight.input = 6;
+params.weight.input = 0.5;
 
 % Learned model
 params.feature_names = feature_names;

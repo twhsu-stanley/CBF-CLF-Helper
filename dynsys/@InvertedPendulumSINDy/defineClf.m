@@ -40,8 +40,8 @@ function clf = defineClf(obj, params, symbolic_state)
     B = [g1; g2];
 
     % LQR
-    Q = diag([1, 0.1]);
-    R = 1;
+    Q = params.clf.Q;
+    R = params.clf.R;
     [K_lqr, P_lqr, ~] = lqr(A, B, Q, R);
     obj.K_lqr = K_lqr;
     clf = x' * P_lqr * x;
