@@ -4,8 +4,8 @@ close all
 
 %% Loading the SYNDy model from Python
 pickle = py.importlib.import_module('pickle');
-%fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_inverted_pendulum_sindy', 'rb');
-fh = py.open('..\..\sindy_models\model_inverted_pendulum_sindy', 'rb');
+fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_inverted_pendulum_sindy', 'rb');
+%fh = py.open('..\..\sindy_models\model_inverted_pendulum_sindy', 'rb');
 P = pickle.load(fh);    % pickle file loaded to Python variable
 fh.close();
 
@@ -38,17 +38,11 @@ params.m = 1;    % [kg]       mass of pendulum
 params.g = 9.81; % [m/s^2]    acceleration of gravity
 params.b = 0.01; % [s*Nm/rad] friction coefficient
 
-%params.u_max = 10;
+%params.u_max = 50;
 %params.u_min = -params.u_max;
 
-params.I = params.m*params.l^2/3; 
-
-% Assumed feedback gains, used to construct a CLF.
-params.Kp = 6;
-params.Kd = 5;
-
-params.clf.rate = 1.0;
-params.weight.slack = 100;
+params.clf.rate = 1;
+params.weight.slack = 400;
 params.weight.input = 6;
 
 % Learned model
@@ -65,13 +59,13 @@ controller_cpclf = @ip_learned.ctrlCpClfQp;
 ip_true = InvertedPendulum(params);
 dyn_true = @ip_true.dynamics;
 %controller_clf = @ip_true.ctrlClfQp;
-odeSolver = @ode45;
+odeSolver = @ode45; %113
 odeFun = dyn_true;
 
 %% Create a grid of states and sample initiall states from it
 resolution = 100;
-x_ = linspace(-pi/5, pi/5, resolution);
-y_ = linspace(-35, 35, resolution);
+x_ = linspace(-pi/4, pi/4, resolution);
+y_ = linspace(-5, 5, resolution);
 state = zeros(resolution, resolution, 2);
 state_norm_square = zeros(resolution, resolution);
 V_ = zeros(resolution, resolution);
@@ -93,7 +87,7 @@ for i = 1:resolution
 end
 
 % Sample around the level set ip_learned.clf == clf_level as x0 
-N = 5; % number of paths
+N = 10; % number of paths
 N = min(N, size(x0, 1));
 x0 = x0(randperm(length(x0)), :); % random shuffling
 x0 = x0(1:N,:);
@@ -109,8 +103,8 @@ M = V0/c1;
 
 % Testing
 %N = 1;
-%x0 = [pi/5, 0];
-%V0 = ip_learned.clf([pi/5; 0]);
+%x0 = [pi/2, 0];
+%V0 = ip_learned.clf([pi/2; 0]);
 
 %% Run simulation
 dt = 0.001;
@@ -122,6 +116,10 @@ x_hist = zeros(N, length(tt), ip_true.xdim);
 x_norm_hist = zeros(N, length(tt));
 u_hist = zeros(N, length(tt)-1);
 V_hist = zeros(N, length(tt)-1);
+p_hist = zeros(N, length(tt)-1);
+p_cp_hist = zeros(N, length(tt)-1);
+slack_hist = zeros(N, length(tt)-1);
+model_err__hist = zeros(N, length(tt)-1);
 
 for n = 1:N
     for k = 1:length(tt)-1
@@ -139,10 +137,20 @@ for n = 1:N
 
         % Controller
         %[u, slack, V, feas, comp_time] = controller_clf(x);
-        [u, slack, V, feas, comp_time]  = controller_cpclf(x, 0, cp_quantile);
+        u_ref = 0; % -ip_learned.K_lqr * x; %
+        [u, slack, V, feas]  = controller_cpclf(x, u_ref, cp_quantile);
 
         u_hist(n, k) = u;
+        if isempty(slack)
+            slack = 0;
+        end
+        slack_hist(n, k) = slack;
         V_hist(n, k) = V;
+
+        p_hist(n, k) = ip_learned.dclf(x) * (ip_true.f(x) + ip_true.g(x) * u) + params.clf.rate * ip_learned.clf(x);
+        p_cp_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + params.clf.rate * ip_learned.clf(x)...
+            + cp_quantile * norm(ip_learned.dclf(x), 2);
+        model_err__hist(n, k) = norm(ip_true.f(x) + ip_true.g(x) * u - ip_learned.f(x) - ip_learned.g(x) * u, 2);
 
         % Run one time step propagation.
         %x_hist(n, k+1, :) = x + dyn_true(t, x, u) * dt;
@@ -157,16 +165,32 @@ end
 figure;
 title('Inverted Pendulum: CLF-QP States');
 subplot(2, 1, 1);
-plot(tt, squeeze(180 * x_hist(:,:,1)/pi)); grid on
-xlabel('Time (s)'); ylabel("$\theta$ (deg)",'interpreter','latex'); 
+plot(tt, squeeze(x_hist(:,:,1))); grid on
+xlabel('Time (s)'); ylabel("theta (rad)"); 
+%plot(tt, squeeze(180 * x_hist(:,:,1)/pi)); grid on
+%xlabel('Time (s)'); ylabel("$\theta$ (deg)",'interpreter','latex'); 
 subplot(2, 1, 2);
-plot(tt, squeeze(180 * x_hist(:,:,2)/pi)); grid on
-xlabel('Time (s)'); ylabel("$\dot{\theta}$ (deg/s)",'interpreter','latex'); 
+plot(tt, squeeze(x_hist(:,:,2))); grid on
+xlabel('Time (s)'); ylabel("theta dot (rad/s)");
+%plot(tt, squeeze(180 * x_hist(:,:,2)/pi)); grid on
+%xlabel('Time (s)'); ylabel("$\dot{\theta}$ (deg/s)",'interpreter','latex'); 
 
 figure;
 plot(tt(1:end-1), u_hist); hold on
 xlabel('Time (s)'); 
 ylabel('ut');
+grid on
+
+figure;
+plot(tt(1:end-1), slack_hist); hold on
+xlabel('Time (s)'); 
+ylabel('slack');
+grid on
+
+figure;
+plot(tt(1:end-1), model_err__hist); hold on
+xlabel('Time (s)'); 
+ylabel('||model err||');
 grid on
 
 figure;
@@ -181,5 +205,13 @@ figure;
 plot(tt(1:end-1), V_hist); hold on
 plot(tt(1:end-1), V0 * exp(-params.clf.rate * tt(1:end-1)), 'r--');
 xlabel('Time (s)'); 
-ylabel('CP-CLF: V(x_t)');
+ylabel('CLF: V(x_t)');
+grid on
+
+figure;
+plot(tt(1:end-1), p_hist, '-b'); hold on
+%plot(tt(2:end-1), diff(V_hist,1,2)/dt, 'r--'); % checking
+plot(tt(1:end-1), p_cp_hist, '-r'); hold on
+xlabel('Time (s)'); 
+ylabel('pCLF');
 grid on

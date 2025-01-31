@@ -1,15 +1,13 @@
-function [u, slack, V, feas, comp_time] = ctrlCpClfQp(obj, x, u_ref, cp_quantile)
+function [u, slack, V, feas] = ctrlCpClfQp(obj, x, u_ref, cp_quantile)
     %% Implementation of CP CLF-QP
     % Inputs:   x: state
     %           u_ref: reference control input
-    %           with_slack: flag for relaxing (1: relax, 0: hard CLF constraint)
-    %           verbose: flag for logging (1: print log, 0: run silently)
+    %           cp_quantile
     % Outputs:  u: control input as a solution of the CLF-QP
     %           slack: slack variable for relaxation. (empty list when with_slack=0)
     %           V: Value of the CLF at the current state.
     %           feas: 1 if QP is feasible, 0 if infeasible. (Note: even
     %           when qp is infeasible, u is determined from quadprog.)
-    %           comp_time: computation time to run the solver.
 
     if isempty(obj.clf)
         error('CLF is not defined so ctrlClfQp cannot be used. Create a class function [defineClf] and set up clf with symbolic expression.');
@@ -24,7 +22,6 @@ function [u, slack, V, feas, comp_time] = ctrlCpClfQp(obj, x, u_ref, cp_quantile
         error("Wrong size of u_ref, it should be (udim, 1) array.");
     end
     
-    tstart = tic;
     V = obj.clf(x);
     % Lie derivatives of the CLF.
     LfV = obj.lf_clf(x);
@@ -140,5 +137,4 @@ function [u, slack, V, feas, comp_time] = ctrlCpClfQp(obj, x, u_ref, cp_quantile
         end
         slack = [];
     end
-    comp_time = toc(tstart);
 end

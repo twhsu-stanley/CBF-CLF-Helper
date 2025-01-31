@@ -1,4 +1,8 @@
 classdef InvertedPendulum < CtrlAffineSys
+    properties
+        K_lqr
+    end
+    
     methods
         function [x, f, g] = defineSystem(obj, params)
             syms theta dtheta

@@ -1,11 +1,15 @@
-function clf = defineClf(~, params, symbolic_state)
+function clf = defineClf(obj, params, symbolic_state)
     x = symbolic_state;
     %{
     I = params.m * params.l^2 / 3;
     c_bar = params.m*params.g*params.l/(2*I);
     b_bar = params.b/I;
-    A0 = [0, 1; 
+    A = [0, 1; 
         c_bar-params.Kp/I, -b_bar-params.Kd/I]; % Linearized Dynamics.
+    % state feedback : u0 = -params.Kp * x0 - params.Kd * x1
+    Q = params.clf.rate * eye(size(A,1));
+    P = lyap(A', Q); % Cost Matrix for quadratic CLF. (V = e'*P*e)
+    clf = x' * P * x;
     %}
 
     % Numerically compute the A matrix of the learned model
@@ -31,16 +35,15 @@ function clf = defineClf(~, params, symbolic_state)
     end
     
     A = simplify(jacobian([f1;f2], x));
+    x0 = 0; x1 = 0;
+    A = eval(A); % evaluate A at the equilibrium point
     B = [g1; g2];
-    K = [-params.Kp, - params.Kd]; % state feedback : u0 = -params.Kp * x0 - params.Kd * x1
-    A = A - B * K;
+
+    % LQR
+    Q = diag([1, 0.1]);
+    R = 1;
+    [K_lqr, P_lqr, ~] = lqr(A, B, Q, R);
+    obj.K_lqr = K_lqr;
+    clf = x' * P_lqr * x;
     
-    % Evaluate A at the equilibrium point
-    x0 = 0;
-    x1 = 0;
-    A = eval(A);
-    
-    Q = params.clf.rate * eye(size(A,1));
-    P = lyap(A', Q); % Cost Matrix for quadratic CLF. (V = e'*P*e)
-    clf = x' * P * x;
-end
+end 
