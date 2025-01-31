@@ -35,35 +35,33 @@ dt = 0.01;
 T = 10;
 tt = 0:dt:T;
 
-N = 100; % number of paths
-x0 = [rand(1,N) * 8 + 2; rand(1,N) * 6 + 1; rand(1,N) * 2*pi - pi]; % initial state
-x_d = [2; 4; 0]; % desired state
+% Desired target state
+x_d = [2; 4; 0];
+params.xd = x_d(1);
+params.yd = x_d(2);
 
+% System parameter
 params.v = 1.0; % velocity
-
-%obj.params.u_max = pi/2;
-%obj.params.u_min = -pi/2;
 
 % Obstacle position
 params.xo = 5;
 params.yo = 4;
+params.d = 2; % radius
 
-% Obstacle radius
-params.d = 2;
+% CBF
+params.cbf.rate = 1;
 params.cbf_gamma0 = 15;
 
-% Exclude samples within the obstacle
+% Sample initial states outside the obstacle
+N = 100; % number of paths
+x0 = [rand(1,N) * 8 + 2; rand(1,N) * 6 + 1; rand(1,N) * 2*pi - pi]; % initial state
 x0 = x0(:, (x0(1,:) - params.xo).^2 + (x0(2,:) - params.yo).^2 > (params.d * 1.05)^2);
 N = size(x0, 2);
 
-% Desired target point
-params.xd = x_d(1);
-params.yd = x_d(2);
-
-%params.clf.rate = 1;
-params.weight.slack = 50; % for clf, not used for cbf
-
-params.cbf.rate = 1;
+% QP solver
+%params.u_max = 50;
+%params.u_min = -params.u_max;
+params.weight.input = 10000; % default is 1
 
 % Learned model
 params.feature_names = feature_names;
@@ -87,28 +85,34 @@ dyn_true = @dubins_true.dynamics;
 x_hist = cell(N, 1);
 u_hist = cell(N, 1);
 h_hist = cell(N, 1);
+p_hist = cell(N, 1);
+p_cp_hist = cell(N, 1);
 
 for n = 1:N
-    xs = zeros(length(tt), 3);
-    us = zeros(length(tt)-1, 1);
-    hs = zeros(length(tt)-1, 1);
+    x_s = zeros(length(tt), 3);
+    u_s = zeros(length(tt)-1, 1);
+    h_s = zeros(length(tt)-1, 1);
+    p_s = zeros(length(tt)-1, 1);
+    p_cp_s = zeros(length(tt)-1, 1);
 
     for k = 1:length(tt)-1
         if k == 1 
-            xs(1, :) = x0(:,n)';
+            x_s(1, :) = x0(:,n)';
         end
 
         % Wrap angle to pi
         % *** This is crucial ***
-        xs(k, 3) = wrapToPi(xs(k, 3));
+        x_s(k, 3) = wrapToPi(x_s(k, 3));
 
         t = tt(k);
-        x = xs(k, :)';
+        x = x_s(k, :)';
 
         if (x(1) - x_d(1)) ^2 + (x(2) - x_d(2)) ^2 < 0.01
-            xs = xs(1:k-1, :);
-            us = us(1:k-1, :);
-            hs = hs(1:k-1, :);
+            x_s = x_s(1:k-1, :);
+            u_s = u_s(1:k-1, :);
+            h_s = h_s(1:k-1, :);
+            p_s = p_s(1:k-1, :);
+            p_cp_s = p_cp_s(1:k-1, :);
             break
         end
 
@@ -120,16 +124,23 @@ for n = 1:N
             continue
         end
 
-        us(k) = u;
-        hs(k) = h;
+        u_s(k) = u;
+        h_s(k) = h;
+
+        p_s(k) = dubins_learned.dcbf(x) * (dubins_true.f(x) + dubins_true.g(x) * u) + params.cbf.rate * dubins_learned.cbf(x);
+        p_cp_s(k) = dubins_learned.dcbf(x) * (dubins_learned.f(x) + dubins_learned.g(x) * u) ...
+                          + params.cbf.rate * dubins_learned.cbf(x)...
+                          - cp_quantile * norm(dubins_learned.dcbf(x), 2);
 
         % Run one time step propagation.
-        xs(k+1, :) = x + dyn_true(t, x, u) * dt;
+        x_s(k+1, :) = x + dyn_true(t, x, u) * dt;
 
     end
-    x_hist{n} = xs;
-    u_hist{n} = us;
-    h_hist{n} = hs;
+    x_hist{n} = x_s;
+    u_hist{n} = u_s;
+    h_hist{n} = h_s;
+    p_hist{n} = p_s;
+    p_cp_hist{n} = p_cp_s;
 end
 
 
@@ -182,6 +193,31 @@ xlabel('Time (s)');
 ylabel('CP-CBF: h(x_t)');
 grid on
 
+figure
+for n = 1:N
+    plot((0:size(u_hist{n},1)-1) * dt, u_hist{n}(:,1)); hold on
+end
+xlabel('Time (s)');
+ylabel('Control: u_t');
+grid on
+
+figure;
+subplot(2,1,1);
+for n = 1:N
+    plot((0:size(p_hist{n},1)-1) * dt, p_hist{n}(:,1)); hold on
+end
+grid on
+xlabel('Time (s)'); 
+ylabel('pCBF');
+subplot(2,1,2);
+for n = 1:N
+    plot((0:size(p_cp_hist{n},1)-1) * dt, p_cp_hist{n}(:,1)); hold on
+end
+grid on
+xlabel('Time (s)');
+ylabel('pCBF-CP');
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function h = draw_circle(center,r)
 hold on
 th = 0:pi/50:2*pi;

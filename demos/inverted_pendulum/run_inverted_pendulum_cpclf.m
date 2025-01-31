@@ -38,12 +38,14 @@ params.m = 1;    % [kg]       mass of pendulum
 params.g = 9.81; % [m/s^2]    acceleration of gravity
 params.b = 0.01; % [s*Nm/rad] friction coefficient
 
-%params.u_max = 50;
-%params.u_min = -params.u_max;
-
+% CLF
 params.clf.Q = diag([1, 0.01]);
 params.clf.R = 1;
 params.clf.rate = 2;
+
+% QP solver
+%params.u_max = 50;
+%params.u_min = -params.u_max;
 params.weight.slack = 400;
 params.weight.input = 0.5;
 
@@ -151,7 +153,7 @@ for n = 1:N
 
         p_hist(n, k) = ip_learned.dclf(x) * (ip_true.f(x) + ip_true.g(x) * u) + params.clf.rate * ip_learned.clf(x);
         p_cp_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + params.clf.rate * ip_learned.clf(x)...
-            + cp_quantile * norm(ip_learned.dclf(x), 2);
+                          + cp_quantile * norm(ip_learned.dclf(x), 2);
         model_err__hist(n, k) = norm(ip_true.f(x) + ip_true.g(x) * u - ip_learned.f(x) - ip_learned.g(x) * u, 2);
 
         % Run one time step propagation.
@@ -211,9 +213,14 @@ ylabel('CLF: V(x_t)');
 grid on
 
 figure;
-plot(tt(1:end-1), p_hist, '-b'); hold on
+subplot(2,1,1);
+plot(tt(1:end-1), p_hist); hold on
 %plot(tt(2:end-1), diff(V_hist,1,2)/dt, 'r--'); % checking
-plot(tt(1:end-1), p_cp_hist, '-r'); hold on
+grid on
 xlabel('Time (s)'); 
 ylabel('pCLF');
+subplot(2,1,2);
+plot(tt(1:end-1), p_cp_hist); hold on
 grid on
+xlabel('Time (s)');
+ylabel('pCLF-CP');
