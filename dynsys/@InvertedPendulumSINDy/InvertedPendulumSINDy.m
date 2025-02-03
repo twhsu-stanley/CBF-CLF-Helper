@@ -1,6 +1,7 @@
 classdef InvertedPendulumSINDy < CtrlAffineSys
     properties
         K_lqr
+        P_lqr
     end
     
     methods

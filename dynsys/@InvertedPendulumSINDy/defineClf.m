@@ -1,16 +1,5 @@
 function clf = defineClf(obj, params, symbolic_state)
     x = symbolic_state;
-    %{
-    I = params.m * params.l^2 / 3;
-    c_bar = params.m*params.g*params.l/(2*I);
-    b_bar = params.b/I;
-    A = [0, 1; 
-        c_bar-params.Kp/I, -b_bar-params.Kd/I]; % Linearized Dynamics.
-    % state feedback : u0 = -params.Kp * x0 - params.Kd * x1
-    Q = params.clf.rate * eye(size(A,1));
-    P = lyap(A', Q); % Cost Matrix for quadratic CLF. (V = e'*P*e)
-    clf = x' * P * x;
-    %}
 
     % Numerically compute the A matrix of the learned model
     feature_names = params.feature_names;
@@ -40,10 +29,18 @@ function clf = defineClf(obj, params, symbolic_state)
     B = [g1; g2];
 
     % LQR
+    %{
     Q = params.clf.Q;
     R = params.clf.R;
     [K_lqr, P_lqr, ~] = lqr(A, B, Q, R);
     obj.K_lqr = K_lqr;
+    obj.P_lqr = P_lqr;
     clf = x' * P_lqr * x;
-    
+    %}
+
+    % Linearized Dynamics with state feedback : u0 = params.Kp * x0 + params.Kd * x1
+    A_cl = A + B * [params.Kp, params.Kd];
+    Q = params.clf.rate * eye(size(A,1));
+    P = lyap(A_cl', Q); % Cost Matrix for quadratic CLF. (V = e'*P*e)
+    clf = x' * P * x;
 end 
