@@ -30,6 +30,10 @@ for i = 1: length(feature_names)
     feature_names = replace(feature_names, " ", "*");
 end
 
+%% Use conformal prediction or not
+use_cp = 1; % 1 or 0: whether to use conformal prediction
+cp_quantile = cp_quantile * use_cp; % setting cp_quantile = 0 is equivalent to using the regular cbf
+
 %% Implementation of the CP-CBF
 dt = 0.01;
 T = 10;
@@ -68,7 +72,6 @@ params.feature_names = feature_names;
 params.coefficients = coefficients;
 params.idx_x = idx_x;
 params.idx_u = idx_u;
-%cp_quantile = 0; % setting cp_quantile = 0 is equivalent to regular cbf
 dubins_learned = DubinsCarSINDy(params);
 controller_nominal = @dubins_learned.ctrlNominal; % proportional navigation
 Kp = 10; % gain for the proportional navigation
@@ -148,58 +151,75 @@ end
 p_o = [params.xo; params.yo];
 r_o = params.d;
 
-figure
-subplot(3,1,1)
+figure;
+subplot(3,1,1);
 for n = 1:N
     plot((0:size(x_hist{n},1)-1) * dt, x_hist{n}(:,1)); hold on
 end
 xlabel('Time (s)');
-ylabel('p_x (m)')
+ylabel('x (m)');
 grid on
-
-subplot(3,1,2)
+subplot(3,1,2);
 for n = 1:N
     plot((0:size(x_hist{n},1)-1) * dt, x_hist{n}(:,2)); hold on
 end
 xlabel('Time (s)');
-ylabel('p_y (m)')
+ylabel('y (m)');
 grid on
-
-subplot(3,1,3)
+subplot(3,1,3);
 for n = 1:N
     plot((0:size(x_hist{n},1)-1) * dt, x_hist{n}(:,3)); hold on
 end
 xlabel('Time (s)');
-ylabel('theta (rad)')
+ylabel('theta (rad)');
 grid on
+if use_cp
+    saveas(gcf, "plots/cpcbf_dubins_car_states.png");
+else
+    saveas(gcf, "plots/cbf_dubins_car_states.png");
+end
 
-figure
+figure;
 for n = 1:N
     plot(x_hist{n}(:,1), x_hist{n}(:,2)); hold on
 end
 draw_circle(p_o, r_o); hold on
 plot(x_d(1), x_d(2), 'r.', MarkerSize = 20); hold on
 grid on
-%xlim([lim_min, lim_max]);
-%ylim([lim_min, lim_max]);
-xlabel('p_x (m)')
-ylabel('p_y (m)')
+xlabel('x (m)');
+ylabel('y (m)');
+if use_cp
+    saveas(gcf, "plots/cpcbf_dubins_car_2d.png");
+else
+    saveas(gcf, "plots/cbf_dubins_car_2d.png");
+end
 
-figure
+figure;
 for n = 1:N
     plot((0:size(h_hist{n},1)-1) * dt, h_hist{n}(:,1)); hold on
 end
 xlabel('Time (s)');
-ylabel('CP-CBF: h(x_t)');
 grid on
+if use_cp
+    ylabel('CP-CBF: h(x_t)');
+    saveas(gcf, "plots/cpcbf_dubins_car_cpcbf.png");
+else
+    ylabel('CBF: h(x_t)');
+    saveas(gcf, "plots/cbf_dubins_car_cbf.png");
+end
 
-figure
+figure;
 for n = 1:N
     plot((0:size(u_hist{n},1)-1) * dt, u_hist{n}(:,1)); hold on
 end
 xlabel('Time (s)');
 ylabel('Control: u_t');
 grid on
+if use_cp
+    saveas(gcf, "plots/cpcbf_dubins_car_control.png");
+else
+    saveas(gcf, "plots/cbf_dubins_car_control.png");
+end
 
 figure;
 subplot(2,1,1);
@@ -216,6 +236,11 @@ end
 grid on
 xlabel('Time (s)');
 ylabel('pCBF-CP');
+if use_cp
+    saveas(gcf, "plots/cpcbf_dubins_car_pcbf.png");
+else
+    saveas(gcf, "plots/cbf_dubins_car_pcbf.png");
+end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function h = draw_circle(center,r)

@@ -29,7 +29,10 @@ for i = 1: length(feature_names)
 
     feature_names = replace(feature_names, " ", "*");
 end
-% NOTE: SINDy model with ps.PolynomialLibrary(degree = 2) worked well
+
+%% Use conformal prediction or not
+use_cp = 1; % 1 or 0: whether to use conformal prediction
+cp_quantile = cp_quantile * use_cp; % setting cp_quantile = 0 is equivalent to using the regular clf
 
 %% Set up the learned and true models
 % Model Parameters
@@ -57,7 +60,6 @@ params.idx_u = idx_u;
 ip_learned = InvertedPendulumSINDy(params);
 controller_clf = @ip_learned.ctrlClfQp;
 controller_cpclf = @ip_learned.ctrlCpClfQp;
-%cp_quantile = 0; % setting cp_quantile = 0 is equivalent to using the regular clf
 
 % True model
 ip_true = InvertedPendulum(params);
@@ -67,7 +69,7 @@ odeSolver = @ode45; %113
 odeFun = dyn_true;
 
 %% Create a grid of states and sample initiall states from it
-resolution = 100;
+resolution = 1000;
 x_ = linspace(-pi/4, pi/4, resolution);
 y_ = linspace(-5, 5, resolution);
 state = zeros(resolution, resolution, 2);
@@ -84,7 +86,7 @@ clf_level = min([V_(1,:), V_(end,:), V_(:,1)', V_(:,end)']);
 x0 = [];
 for i = 1:resolution
     for j = 1:resolution
-        if V_(i,j) <= clf_level && V_(i,j) >= clf_level - 0.01
+        if V_(i,j) <= clf_level && V_(i,j) >= clf_level - 0.001
             x0 = [x0; [x_(i), y_(j)]];
         end
     end
@@ -167,7 +169,6 @@ end
 
 %% Plots
 figure;
-title('Inverted Pendulum: CLF-QP States');
 subplot(2, 1, 1);
 plot(tt, squeeze(x_hist(:,:,1))); grid on
 xlabel('Time (s)'); ylabel("theta (rad)"); 
@@ -177,25 +178,40 @@ subplot(2, 1, 2);
 plot(tt, squeeze(x_hist(:,:,2))); grid on
 xlabel('Time (s)'); ylabel("theta dot (rad/s)");
 %plot(tt, squeeze(180 * x_hist(:,:,2)/pi)); grid on
-%xlabel('Time (s)'); ylabel("$\dot{\theta}$ (deg/s)",'interpreter','latex'); 
+%xlabel('Time (s)'); ylabel("$\dot{\theta}$ (deg/s)",'interpreter','latex');
+if use_cp
+    saveas(gcf, "plots/cpclf_inverted_pendulum_states.png");
+else
+    saveas(gcf, "plots/clf_inverted_pendulum_states.png");
+end
 
 figure;
 plot(tt(1:end-1), u_hist); hold on
 xlabel('Time (s)'); 
-ylabel('ut');
+ylabel('Control: ut');
 grid on
+if use_cp
+    saveas(gcf, "plots/cpclf_inverted_pendulum_control.png");
+else
+    saveas(gcf, "plots/clf_inverted_pendulum_control.png");
+end
 
 figure;
 plot(tt(1:end-1), slack_hist); hold on
 xlabel('Time (s)'); 
-ylabel('slack');
+ylabel('QP slack');
 grid on
+if use_cp
+    saveas(gcf, "plots/cpclf_inverted_pendulum_qpslack.png");
+else
+    saveas(gcf, "plots/clf_inverted_pendulum_qpslack.png");
+end
 
-figure;
-plot(tt(1:end-1), model_err__hist); hold on
-xlabel('Time (s)'); 
-ylabel('||model err||');
-grid on
+%figure;
+%plot(tt(1:end-1), model_err__hist); hold on
+%xlabel('Time (s)'); 
+%ylabel('||model err||');
+%grid on
 
 figure;
 plot(tt, x_norm_hist); hold on
@@ -204,13 +220,24 @@ plot(tt(1:end-1), sqrt(M) * exp(-params.clf.rate/2 * tt(1:end-1)), 'r--');
 xlabel('Time (s)'); 
 ylabel('State norm: ||x||');
 grid on
+if use_cp
+    saveas(gcf, "plots/cpclf_inverted_pendulum_state_norm.png");
+else
+    saveas(gcf, "plots/clf_inverted_pendulum_state_norm.png");
+end
 
 figure;
 plot(tt(1:end-1), V_hist); hold on
 plot(tt(1:end-1), V0 * exp(-params.clf.rate * tt(1:end-1)), 'r--');
-xlabel('Time (s)'); 
-ylabel('CLF: V(x_t)');
+xlabel('Time (s)');
 grid on
+if use_cp
+    ylabel('CP-CLF: V(x_t)');
+    saveas(gcf, "plots/cpclf_inverted_pendulum_cpclf.png");
+else
+    ylabel('CLF: V(x_t)');
+    saveas(gcf, "plots/clf_inverted_pendulum_clf.png");
+end
 
 figure;
 subplot(2,1,1);
@@ -224,3 +251,8 @@ plot(tt(1:end-1), p_cp_hist); hold on
 grid on
 xlabel('Time (s)');
 ylabel('pCLF-CP');
+if use_cp
+    saveas(gcf, "plots/cpclf_inverted_pendulum_pclf.png");
+else
+    saveas(gcf, "plots/clf_inverted_pendulum_pclf.png");
+end
