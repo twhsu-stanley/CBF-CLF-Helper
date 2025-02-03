@@ -6,7 +6,7 @@ close all
 pickle = py.importlib.import_module('pickle');
 %fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_inverted_pendulum_sindy', 'rb');
 fh = py.open('..\..\sindy_models\model_inverted_pendulum_sindy', 'rb');
-P = pickle.load(fh);    % pickle file loaded to Python variable
+P = pickle.load(fh); % pickle file loaded to Python variable
 fh.close();
 
 feature_names = string(P{'feature_names'}); % TODO: rename
@@ -42,15 +42,22 @@ params.g = 9.81; % [m/s^2]    acceleration of gravity
 params.b = 0.01; % [s*Nm/rad] friction coefficient
 
 % CLF
-params.clf.Q = diag([1, 0.01]);
-params.clf.R = 1;
-params.clf.rate = 2;
+%params.clf.Q = diag([1, 1e-2]);
+%params.clf.R = 1;
+params.clf.rate = 1;
+params.Kp = 6;
+params.Kd = 5;
 
 % QP solver
 %params.u_max = 50;
 %params.u_min = -params.u_max;
-params.weight.slack = 400;
-params.weight.input = 0.5;
+if use_cp
+    params.weight.slack = 400;
+    %params.weight.input = 10;
+else
+    params.weight.slack = 10;
+    %params.weight.input = 0.5;
+end
 
 % Learned model
 params.feature_names = feature_names;
@@ -65,13 +72,13 @@ controller_cpclf = @ip_learned.ctrlCpClfQp;
 ip_true = InvertedPendulum(params);
 dyn_true = @ip_true.dynamics;
 %controller_clf = @ip_true.ctrlClfQp;
-odeSolver = @ode45; %113
+odeSolver = @ode45;
 odeFun = dyn_true;
 
 %% Create a grid of states and sample initiall states from it
-resolution = 1000;
+resolution = 200;
 x_ = linspace(-pi/4, pi/4, resolution);
-y_ = linspace(-5, 5, resolution);
+y_ = linspace(-pi*2, pi*2, resolution);
 state = zeros(resolution, resolution, 2);
 state_norm_square = zeros(resolution, resolution);
 V_ = zeros(resolution, resolution);
@@ -86,14 +93,24 @@ clf_level = min([V_(1,:), V_(end,:), V_(:,1)', V_(:,end)']);
 x0 = [];
 for i = 1:resolution
     for j = 1:resolution
-        if V_(i,j) <= clf_level && V_(i,j) >= clf_level - 0.001
+        if V_(i,j) <= clf_level && V_(i,j) >= clf_level - 0.01 %&& abs(y_(j)) < 1.0
             x0 = [x0; [x_(i), y_(j)]];
         end
     end
 end
 
+figure;
+[X, Y] = meshgrid(x_, y_);
+contourf(X, Y, V_', "ShowText", true); hold on
+%colormap(summer)
+colorbar
+marker_size = 10;
+scatter(x0(:,1), x0(:,2), marker_size, "filled", "MarkerFaceColor", [1, 0, 0]);
+xlabel("theta (rad)");
+ylabel("theta dot (rad/s)");
+
 % Sample around the level set ip_learned.clf == clf_level as x0 
-N = 10; % number of paths
+N = 20; % number of paths
 N = min(N, size(x0, 1));
 x0 = x0(randperm(length(x0)), :); % random shuffling
 x0 = x0(1:N,:);
@@ -152,6 +169,7 @@ for n = 1:N
         end
         slack_hist(n, k) = slack;
         V_hist(n, k) = V;
+        %V_hist(n, k) = x' * ip_learned.P_lqr * x;
 
         p_hist(n, k) = ip_learned.dclf(x) * (ip_true.f(x) + ip_true.g(x) * u) + params.clf.rate * ip_learned.clf(x);
         p_cp_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + params.clf.rate * ip_learned.clf(x)...
@@ -163,7 +181,7 @@ for n = 1:N
         [ts_temp, xs_temp] = odeSolver(@(t, s) odeFun(t, s, u), [t t+dt], x);
         x_hist(n, k+1, :) = xs_temp(end, :);
         x_norm_hist(n, k+1) = norm(squeeze(x_hist(n, k+1, :)));
-
+        %x_norm_hist(n, k) = norm(x);
     end
 end
 
@@ -183,6 +201,20 @@ if use_cp
     saveas(gcf, "plots/cpclf_inverted_pendulum_states.png");
 else
     saveas(gcf, "plots/clf_inverted_pendulum_states.png");
+end
+
+figure;
+[X, Y] = meshgrid(x_, y_);
+contourf(X, Y, V_',"ShowText",true); hold on
+for n = 1:N
+    plot(squeeze(x_hist(n,:,1)), squeeze(x_hist(n,:,2)), "LineWidth", 1.5); hold on
+end
+xlabel("theta (rad)");
+ylabel("theta dot (rad/s)");
+if use_cp
+    saveas(gcf, "plots/cpclf_inverted_pendulum_2d.png");
+else
+    saveas(gcf, "plots/clf_inverted_pendulum_2d.png");
 end
 
 figure;
@@ -215,8 +247,9 @@ end
 
 figure;
 plot(tt, x_norm_hist); hold on
-plot(tt(1:end-1), sqrt(M) * exp(-params.clf.rate/2 * tt(1:end-1)), 'r--');
+%plot(tt(1:end-1), sqrt(M) * exp(-params.clf.rate/2 * tt(1:end-1)), 'r--');
 %plot(tt(1:end-1), sqrt(c2/c1) * x_norm_hist(:,1) * exp(-params.clf.rate/2 * tt(1:end-1)), 'g--');
+ylim([0, inf]);
 xlabel('Time (s)'); 
 ylabel('State norm: ||x||');
 grid on
