@@ -16,7 +16,8 @@ n_features = length(feature_names);
 coefficients = reshape(coefficients, [n_features, n_dim])';
 
 cp_quantile = P{'model_error'}{'quantile'};
-fprintf("cp_quantile = %5.3f \n", cp_quantile);
+alpha = P{'model_error'}{'alpha'};
+fprintf("alpha = %4.2f; cp_quantile = %5.3f \n", alpha, cp_quantile);
 
 idx_x = []; % Indices for f(x)
 idx_u = []; % Indices for g(x)*u
