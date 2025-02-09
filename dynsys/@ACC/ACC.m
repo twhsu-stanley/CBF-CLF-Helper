@@ -7,9 +7,12 @@ classdef ACC < CtrlAffineSys
         function obj = ACC(params)
             obj = obj@CtrlAffineSys(params);            
         end
+
         function Fr = getFr(obj, x)
             v = x(2);
             Fr = obj.params.f0 + obj.params.f1 * v + obj.params.f2 * v^2;
         end
+
+        u_ref = ctrlNominal(obj, v, v_d, Kp)
     end
 end

@@ -57,8 +57,8 @@ params.cbf.rate = 1;
 params.cbf_gamma0 = 15;
 
 % Sample initial states outside the obstacle
-N = 100; % number of paths
-x0 = [rand(1,N) * 8 + 2; rand(1,N) * 6 + 1; rand(1,N) * 2*pi - pi]; % initial state
+N = 150; % number of paths
+x0 = [rand(1,N) * 7 + 3; rand(1,N) * 6 + 1; rand(1,N) * 2*pi - pi]; % initial state
 x0 = x0(:, (x0(1,:) - params.xo).^2 + (x0(2,:) - params.yo).^2 > (params.d * 1.05)^2);
 N = size(x0, 2);
 
@@ -90,6 +90,8 @@ u_hist = cell(N, 1);
 h_hist = cell(N, 1);
 p_hist = cell(N, 1);
 p_cp_hist = cell(N, 1);
+p_err_hist = cell(N, 1);
+cp_bound_hist = cell(N, 1);
 
 for n = 1:N
     x_s = zeros(length(tt), 3);
@@ -97,6 +99,8 @@ for n = 1:N
     h_s = zeros(length(tt)-1, 1);
     p_s = zeros(length(tt)-1, 1);
     p_cp_s = zeros(length(tt)-1, 1);
+    p_err_s = zeros(length(tt)-1, 1);
+    cp_bound_s = zeros(length(tt)-1, 1);
 
     for k = 1:length(tt)-1
         if k == 1 
@@ -135,6 +139,9 @@ for n = 1:N
                           + params.cbf.rate * dubins_learned.cbf(x)...
                           - cp_quantile * norm(dubins_learned.dcbf(x), 2);
 
+        p_err_s(k) = dubins_learned.dclf(x) * (dubins_true.f(x) + dubins_true.g(x) * u - dubins_learned.f(x) - dubins_learned.g(x) * u);
+        cp_bound_s(k) = cp_quantile * norm(dubins_learned.dclf(x), 2);
+
         % Run one time step propagation.
         x_s(k+1, :) = x + dyn_true(t, x, u) * dt;
 
@@ -144,6 +151,8 @@ for n = 1:N
     h_hist{n} = h_s;
     p_hist{n} = p_s;
     p_cp_hist{n} = p_cp_s;
+    p_err_hist{n} = p_err_s;
+    cp_bound_hist{n} = cp_bound_s;
 end
 
 
@@ -174,9 +183,9 @@ xlabel('Time (s)');
 ylabel('theta (rad)');
 grid on
 if use_cp
-    saveas(gcf, "plots/cpcbf_dubins_car_states.png");
+    exportgraphics(gcf, "plots/cpcbf_dubins_car_states.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/cbf_dubins_car_states.png");
+    exportgraphics(gcf, "plots/cbf_dubins_car_states.pdf","Resolution",500);
 end
 
 figure;
@@ -189,23 +198,26 @@ grid on
 xlabel('x (m)');
 ylabel('y (m)');
 if use_cp
-    saveas(gcf, "plots/cpcbf_dubins_car_2d.png");
+    exportgraphics(gcf, "plots/cpcbf_dubins_car_2d.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/cbf_dubins_car_2d.png");
+    exportgraphics(gcf, "plots/cbf_dubins_car_2d.pdf","Resolution",500);
 end
 
 figure;
 for n = 1:N
-    plot((0:size(h_hist{n},1)-1) * dt, h_hist{n}(:,1)); hold on
+    h = plot((0:size(h_hist{n},1)-1) * dt, h_hist{n}(:,1)); hold on
+    c = get(h, 'Color');
+    set(h, 'Color', [c 0.35]);
 end
+yline(0, 'r-', 'LineWidth',3)
 xlabel('Time (s)');
 grid on
 if use_cp
     ylabel('CP-CBF: h(x_t)');
-    saveas(gcf, "plots/cpcbf_dubins_car_cpcbf.png");
+    exportgraphics(gcf, "plots/cpcbf_dubins_car_cpcbf.pdf","Resolution",500);
 else
     ylabel('CBF: h(x_t)');
-    saveas(gcf, "plots/cbf_dubins_car_cbf.png");
+    exportgraphics(gcf, "plots/cbf_dubins_car_cbf.pdf","Resolution",500);
 end
 
 figure;
@@ -216,9 +228,9 @@ xlabel('Time (s)');
 ylabel('Control: u_t');
 grid on
 if use_cp
-    saveas(gcf, "plots/cpcbf_dubins_car_control.png");
+    exportgraphics(gcf, "plots/cpcbf_dubins_car_control.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/cbf_dubins_car_control.png");
+    exportgraphics(gcf, "plots/cbf_dubins_car_control.pdf","Resolution",500);
 end
 
 figure;
@@ -237,10 +249,19 @@ grid on
 xlabel('Time (s)');
 ylabel('pCBF-CP');
 if use_cp
-    saveas(gcf, "plots/cpcbf_dubins_car_pcbf.png");
+    exportgraphics(gcf, "plots/cpcbf_dubins_car_pcbf.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/cbf_dubins_car_pcbf.png");
+    exportgraphics(gcf, "plots/cbf_dubins_car_pcbf.pdf","Resolution",500);
 end
+
+figure;
+for n = 1:N
+    plot((0:size(p_err_hist{n},1)-1) * dt, p_err_hist{n}(:,1), 'b-'); hold on
+    plot((0:size(cp_bound_hist{n},1)-1) * dt, -cp_bound_hist{n}(:,1), 'r-'); hold on
+end
+xlabel('Time (s)'); 
+%ylabel('');
+grid on
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 function h = draw_circle(center,r)
@@ -248,7 +269,7 @@ hold on
 th = 0:pi/50:2*pi;
 xunit = r * cos(th) + center(1);
 yunit = r * sin(th) + center(2);
-plot(xunit, yunit, 'r-', 'LineWidth', 1.5); hold on
+plot(xunit, yunit, 'r-', 'LineWidth', 5); hold on
 h = fill(xunit, yunit, 'r');
 set(h, 'FaceAlpha', 0.4);
 axis equal;

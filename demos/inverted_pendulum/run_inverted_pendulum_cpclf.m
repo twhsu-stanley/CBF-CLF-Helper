@@ -32,6 +32,7 @@ end
 
 %% Use conformal prediction or not
 use_cp = 1; % 1 or 0: whether to use conformal prediction
+cp_quantile_a = cp_quantile; % for robustness analysis
 cp_quantile = cp_quantile * use_cp; % setting cp_quantile = 0 is equivalent to using the regular clf
 
 %% Set up the learned and true models
@@ -44,19 +45,19 @@ params.b = 0.01; % [s*Nm/rad] friction coefficient
 % CLF
 %params.clf.Q = diag([1, 1e-2]);
 %params.clf.R = 1;
-params.clf.rate = 1;
-params.Kp = 6;
+params.clf.rate = 0.5;
+params.Kp = 8;
 params.Kd = 5;
 
 % QP solver
 %params.u_max = 50;
 %params.u_min = -params.u_max;
 if use_cp
-    params.weight.slack = 400;
-    %params.weight.input = 10;
+    params.weight.slack = 500;
+    %params.weight.input = 0.1;
 else
-    params.weight.slack = 10;
-    %params.weight.input = 0.5;
+    params.weight.slack = 500;
+    %params.weight.input = 0.01;
 end
 
 % Learned model
@@ -77,15 +78,17 @@ odeFun = dyn_true;
 
 %% Create a grid of states and sample initiall states from it
 resolution = 200;
-x_ = linspace(-pi/4, pi/4, resolution);
+x_ = linspace(-pi/3, pi/3, resolution);
 y_ = linspace(-pi*2, pi*2, resolution);
 state = zeros(resolution, resolution, 2);
 state_norm_square = zeros(resolution, resolution);
 V_ = zeros(resolution, resolution);
+gradV_ = zeros(resolution, resolution, 2);
 for i = 1:resolution
     for j = 1:resolution
         state_norm_square(i,j) = x_(i)^2 + y_(j)^2;
         V_(i,j) = ip_learned.clf([x_(i); y_(j)]);
+        gradV_(i,j,:) = ip_learned.dclf([x_(i); y_(j)]);
     end
 end
 clf_level = min([V_(1,:), V_(end,:), V_(:,1)', V_(:,end)']);
@@ -93,7 +96,7 @@ clf_level = min([V_(1,:), V_(end,:), V_(:,1)', V_(:,end)']);
 x0 = [];
 for i = 1:resolution
     for j = 1:resolution
-        if V_(i,j) <= clf_level && V_(i,j) >= clf_level - 0.01 %&& abs(y_(j)) < 1.0
+        if V_(i,j) <= clf_level && V_(i,j) >= clf_level - 0.01
             x0 = [x0; [x_(i), y_(j)]];
         end
     end
@@ -120,6 +123,9 @@ ind_roa = find(V_ <= clf_level);
 c1 = min(V_(ind_roa) ./ state_norm_square(ind_roa));
 c2 = max(V_(ind_roa) ./ state_norm_square(ind_roa));
 
+% Estimate Lipchitz constant
+Lv = max(vecnorm(gradV_(ind_roa), 2, 3),[],"all"); 
+
 % Calculate the parameters of exponential stability (M and gamma)
 V0 = clf_level;
 M = V0/c1;
@@ -131,7 +137,7 @@ M = V0/c1;
 
 %% Run simulation
 dt = 0.001;
-T = 3;
+T = 5;
 tt = 0:dt:T;
 
 % Time history
@@ -140,9 +146,11 @@ x_norm_hist = zeros(N, length(tt));
 u_hist = zeros(N, length(tt)-1);
 V_hist = zeros(N, length(tt)-1);
 p_hist = zeros(N, length(tt)-1);
+p_hat_hist = zeros(N, length(tt)-1);
 p_cp_hist = zeros(N, length(tt)-1);
 slack_hist = zeros(N, length(tt)-1);
-model_err__hist = zeros(N, length(tt)-1);
+p_err_hist = zeros(N, length(tt)-1);
+cp_bound_hist = zeros(N, length(tt)-1);
 
 for n = 1:N
     for k = 1:length(tt)-1
@@ -172,9 +180,11 @@ for n = 1:N
         %V_hist(n, k) = x' * ip_learned.P_lqr * x;
 
         p_hist(n, k) = ip_learned.dclf(x) * (ip_true.f(x) + ip_true.g(x) * u) + params.clf.rate * ip_learned.clf(x);
+        p_hat_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + params.clf.rate * ip_learned.clf(x);
         p_cp_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + params.clf.rate * ip_learned.clf(x)...
                           + cp_quantile * norm(ip_learned.dclf(x), 2);
-        model_err__hist(n, k) = norm(ip_true.f(x) + ip_true.g(x) * u - ip_learned.f(x) - ip_learned.g(x) * u, 2);
+        p_err_hist(n, k) = ip_learned.dclf(x) * (ip_true.f(x) + ip_true.g(x) * u - ip_learned.f(x) - ip_learned.g(x) * u);
+        cp_bound_hist(n, k) = cp_quantile * norm(ip_learned.dclf(x), 2);
 
         % Run one time step propagation.
         %x_hist(n, k+1, :) = x + dyn_true(t, x, u) * dt;
@@ -191,16 +201,16 @@ subplot(2, 1, 1);
 plot(tt, squeeze(x_hist(:,:,1))); grid on
 xlabel('Time (s)'); ylabel("theta (rad)"); 
 %plot(tt, squeeze(180 * x_hist(:,:,1)/pi)); grid on
-%xlabel('Time (s)'); ylabel("$\theta$ (deg)",'interpreter','latex'); 
+%xlabel('Time (s)'); ylabel("$\theta$ (deg)","interpreter","latex"); 
 subplot(2, 1, 2);
 plot(tt, squeeze(x_hist(:,:,2))); grid on
 xlabel('Time (s)'); ylabel("theta dot (rad/s)");
 %plot(tt, squeeze(180 * x_hist(:,:,2)/pi)); grid on
-%xlabel('Time (s)'); ylabel("$\dot{\theta}$ (deg/s)",'interpreter','latex');
+%xlabel('Time (s)'); ylabel("$\dot{\theta}$ (deg/s)","interpreter","latex');
 if use_cp
-    saveas(gcf, "plots/cpclf_inverted_pendulum_states.png");
+    exportgraphics(gcf, "plots/cpclf_inverted_pendulum_states.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/clf_inverted_pendulum_states.png");
+    exportgraphics(gcf, "plots/clf_inverted_pendulum_states.pdf","Resolution",500);
 end
 
 figure;
@@ -212,9 +222,9 @@ end
 xlabel("theta (rad)");
 ylabel("theta dot (rad/s)");
 if use_cp
-    saveas(gcf, "plots/cpclf_inverted_pendulum_2d.png");
+    exportgraphics(gcf, "plots/cpclf_inverted_pendulum_2d.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/clf_inverted_pendulum_2d.png");
+    exportgraphics(gcf, "plots/clf_inverted_pendulum_2d.pdf","Resolution",500);
 end
 
 figure;
@@ -223,9 +233,9 @@ xlabel('Time (s)');
 ylabel('Control: ut');
 grid on
 if use_cp
-    saveas(gcf, "plots/cpclf_inverted_pendulum_control.png");
+    exportgraphics(gcf, "plots/cpclf_inverted_pendulum_control.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/clf_inverted_pendulum_control.png");
+    exportgraphics(gcf, "plots/clf_inverted_pendulum_control.pdf","Resolution",500);
 end
 
 figure;
@@ -234,16 +244,19 @@ xlabel('Time (s)');
 ylabel('QP slack');
 grid on
 if use_cp
-    saveas(gcf, "plots/cpclf_inverted_pendulum_qpslack.png");
+    exportgraphics(gcf, "plots/cpclf_inverted_pendulum_qpslack.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/clf_inverted_pendulum_qpslack.png");
+    exportgraphics(gcf, "plots/clf_inverted_pendulum_qpslack.pdf","Resolution",500);
 end
 
-%figure;
-%plot(tt(1:end-1), model_err__hist); hold on
-%xlabel('Time (s)'); 
-%ylabel('||model err||');
-%grid on
+if use_cp
+    figure;
+    plot(tt(1:end-1), p_err_hist, 'b-'); hold on
+    plot(tt(1:end-1), cp_bound_hist, 'r-'); hold on
+    xlabel('Time (s)'); 
+    %ylabel('');
+    grid on
+end
 
 figure;
 plot(tt, x_norm_hist); hold on
@@ -254,38 +267,44 @@ xlabel('Time (s)');
 ylabel('State norm: ||x||');
 grid on
 if use_cp
-    saveas(gcf, "plots/cpclf_inverted_pendulum_state_norm.png");
+    exportgraphics(gcf, "plots/cpclf_inverted_pendulum_state_norm.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/clf_inverted_pendulum_state_norm.png");
+    exportgraphics(gcf, "plots/clf_inverted_pendulum_state_norm.pdf","Resolution",500);
 end
 
 figure;
 plot(tt(1:end-1), V_hist); hold on
-plot(tt(1:end-1), V0 * exp(-params.clf.rate * tt(1:end-1)), 'r--');
+plot(tt(1:end-1), V0 * exp(-params.clf.rate * tt(1:end-1)), 'r--', 'LineWidth',1.5); hold on
 xlabel('Time (s)');
 grid on
 if use_cp
     ylabel('CP-CLF: V(x_t)');
-    saveas(gcf, "plots/cpclf_inverted_pendulum_cpclf.png");
+    exportgraphics(gcf, "plots/cpclf_inverted_pendulum_cpclf.pdf","Resolution",800);
 else
+    %plot(tt(1:end-1), V0 * exp(-params.clf.rate * tt(1:end-1)) + Lv*cp_quantile_a/params.clf.rate * (1-exp(-params.clf.rate * tt(1:end-1))), 'b--');
     ylabel('CLF: V(x_t)');
-    saveas(gcf, "plots/clf_inverted_pendulum_clf.png");
+    exportgraphics(gcf,"plots/clf_inverted_pendulum_clf.pdf","Resolution",800)
 end
 
 figure;
-subplot(2,1,1);
+subplot(3,1,1);
 plot(tt(1:end-1), p_hist); hold on
 %plot(tt(2:end-1), diff(V_hist,1,2)/dt, 'r--'); % checking
 grid on
 xlabel('Time (s)'); 
 ylabel('pCLF');
-subplot(2,1,2);
+subplot(3,1,2);
+plot(tt(1:end-1), p_hat_hist); hold on
+grid on
+xlabel('Time (s)'); 
+ylabel('pCLF hat');
+subplot(3,1,3);
 plot(tt(1:end-1), p_cp_hist); hold on
 grid on
 xlabel('Time (s)');
 ylabel('pCLF-CP');
 if use_cp
-    saveas(gcf, "plots/cpclf_inverted_pendulum_pclf.png");
+    exportgraphics(gcf, "plots/cpclf_inverted_pendulum_pclf.pdf","Resolution",500);
 else
-    saveas(gcf, "plots/clf_inverted_pendulum_pclf.png");
+    exportgraphics(gcf, "plots/clf_inverted_pendulum_pclf.pdf","Resolution",500);
 end
