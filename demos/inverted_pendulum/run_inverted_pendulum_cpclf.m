@@ -114,7 +114,7 @@ xlabel("theta (rad)");
 ylabel("theta dot (rad/s)");
 
 % Sample around the level set ip_learned.clf == clf_level as x0 
-N = 20; % number of paths
+N = 30; % number of paths
 N = min(N, size(x0, 1));
 x0 = x0(randperm(length(x0)), :); % random shuffling
 x0 = x0(1:N,:);
@@ -196,18 +196,24 @@ for n = 1:N
     end
 end
 
+%% Violation score
+Sigma_score = sum(p_hist > 1e-3, "all") / (N*length(tt)-1) * 100;
+fprintf("Sigma_score = %6.3f percent\n", Sigma_score);
+
 %% Plots
 figure;
 subplot(2, 1, 1);
 plot(tt, squeeze(x_hist(:,:,1))); grid on
-xlabel('Time (s)'); ylabel("theta (rad)"); 
-%plot(tt, squeeze(180 * x_hist(:,:,1)/pi)); grid on
-%xlabel('Time (s)'); ylabel("$\theta$ (deg)","interpreter","latex"); 
+%ylabel("theta (rad)"); 
+%xlabel('Time (s)'); 
+ylabel("$\theta$ (rad)","interpreter","latex");
+set(gca,'FontSize',14);
 subplot(2, 1, 2);
 plot(tt, squeeze(x_hist(:,:,2))); grid on
-xlabel('Time (s)'); ylabel("theta dot (rad/s)");
-%plot(tt, squeeze(180 * x_hist(:,:,2)/pi)); grid on
-%xlabel('Time (s)'); ylabel("$\dot{\theta}$ (deg/s)","interpreter","latex');
+%xlabel('Time (s)'); ylabel("theta dot (rad/s)");
+xlabel('Time (s)'); 
+ylabel("$\dot{\theta}$ (rad/s)","interpreter","latex");
+set(gca,'FontSize',14);
 if use_cp
     exportgraphics(gcf, "plots/cpclf_inverted_pendulum_states.pdf","Resolution",500);
 else
@@ -278,6 +284,7 @@ plot(tt(1:end-1), V_hist); hold on
 plot(tt(1:end-1), V0 * exp(-params.clf.rate * tt(1:end-1)), 'r--', 'LineWidth',1.5); hold on
 xlabel('Time (s)');
 grid on
+set(gca,'FontSize',14);
 if use_cp
     ylabel('CP-CLF: V(x_t)');
     exportgraphics(gcf, "plots/cpclf_inverted_pendulum_cpclf.pdf","Resolution",800);

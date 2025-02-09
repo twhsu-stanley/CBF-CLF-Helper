@@ -58,9 +58,9 @@ params.cbf.rate = 1;
 params.cbf_gamma0 = 15;
 
 % Sample initial states outside the obstacle
-N = 150; % number of paths
+N = 100; % number of paths
 x0 = [rand(1,N) * 7 + 3; rand(1,N) * 6 + 1; rand(1,N) * 2*pi - pi]; % initial state
-x0 = x0(:, (x0(1,:) - params.xo).^2 + (x0(2,:) - params.yo).^2 > (params.d * 1.05)^2);
+x0 = x0(:, (x0(1,:) - params.xo).^2 + (x0(2,:) - params.yo).^2 > (params.d * 1.1)^2);
 N = size(x0, 2);
 
 % QP solver
@@ -156,6 +156,15 @@ for n = 1:N
     cp_bound_hist{n} = cp_bound_s;
 end
 
+%% Violation score
+total_points = 0;
+violation_points = 0;
+for n = 1:N
+    violation_points = violation_points + sum(p_hist{n} < -1e-3, "all");
+    total_points = total_points + length(p_hist{n});
+end
+Sigma_score = violation_points / total_points * 100;
+fprintf("Sigma_score = %6.3f percent\n", Sigma_score);
 
 %% Plotting
 p_o = [params.xo; params.yo];

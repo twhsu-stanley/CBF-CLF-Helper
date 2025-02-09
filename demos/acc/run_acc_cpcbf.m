@@ -84,8 +84,9 @@ x0 = [rand_temp * 0;
 
 % Time history
 x_hist = zeros(N, length(tt), 3);
-u_hist = zeros(N, length(tt)-1, 1);
-h_shist = zeros(N, length(tt)-1, 1);
+u_hist = zeros(N, length(tt)-1);
+h_hist = zeros(N, length(tt)-1);
+p_hist = zeros(N, length(tt)-1);
 
 for n = 1:N
     for k = 1:length(tt)-1
@@ -103,13 +104,19 @@ for n = 1:N
         if feas == 0
             error("controller_cpcbf infeasible");
         end
-        u_hist(n, k, :) = u';
-        h_shist(n, k) = h;
+        u_hist(n, k) = u;
+        h_hist(n, k) = h;
+
+        p_hist(n, k) = acc_learned.dcbf(x) * (acc_true.f(x) + acc_true.g(x) * u) + params.cbf.rate * acc_learned.cbf(x);
 
         % Run one time step propagation.
         x_hist(n, k+1, :) = x + dyn_true(t, x, u) * dt;
     end
 end
+
+%% Violation score
+Sigma_score = sum(p_hist < -1e-4, "all") / (N*length(tt)-1) * 100;
+fprintf("Sigma_score = %6.3f percent\n", Sigma_score);
 
 %% Plots
 figure;
@@ -141,7 +148,7 @@ grid on;
 
 figure;
 for n = 1:N
-    h = plot(tt(1:end-1), squeeze(h_shist(n,:,:))); hold on
+    h = plot(tt(1:end-1), squeeze(h_hist(n,:,:))); hold on
     c = get(h, 'Color');
     set(h, 'Color', [c 0.9]);
 end
