@@ -149,6 +149,8 @@ slack_hist = zeros(N, length(tt)-1);
 p_err_hist = zeros(N, length(tt)-1);
 cp_bound_hist = zeros(N, length(tt)-1);
 
+Sigma_score = 0; % violation score
+
 for n = 1:N
     for k = 1:length(tt)-1
         if k == 1
@@ -174,7 +176,11 @@ for n = 1:N
         end
         slack_hist(n, k) = slack;
         V_hist(n, k) = V;
-        %V_hist(n, k) = x' * ip_learned.P_lqr * x;
+        
+        % Compute Sigma_score
+        if V > V0 * exp(-ip_learned.params.clf.rate * t)
+            Sigma_score = Sigma_score + 1;
+        end
 
         p_hist(n, k) = ip_learned.dclf(x) * (ip_true.f(x) + ip_true.g(x) * u) + ip_learned.params.clf.rate * V;
         p_hat_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + ip_learned.params.clf.rate * V;
@@ -193,7 +199,7 @@ for n = 1:N
 end
 
 %% Violation score
-Sigma_score = sum(p_hist > 1e-3, "all") / (N*length(tt)-1) * 100;
+Sigma_score = Sigma_score / (N*length(tt)-1) * 100;
 fprintf("Sigma_score = %6.3f percent\n", Sigma_score);
 
 %% Plots

@@ -5,7 +5,7 @@ close all
 %% Loading the SYNDy model from Python
 pickle = py.importlib.import_module('pickle');
 %fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_acc_sindy', 'rb');
-fh = py.open('..\..\sindy_models\model_acc_sindy', 'rb');
+fh = py.open('..\..\sindy_models\model_acc_traj_sindy', 'rb');
 P = pickle.load(fh);    % pickle file loaded to Python variable
 fh.close();
 
@@ -37,7 +37,7 @@ cp_quantile = cp_quantile * use_cp; % setting cp_quantile = 0 is equivalent to u
 
 %% Implementation of the CP-CBF
 dt = 0.02;
-sim_T = 4;
+sim_T = 5;
 tt = 0:dt:sim_T;
 
 % System parameters
@@ -79,14 +79,16 @@ dyn_true = @acc_true.dynamics;
 N = 30; % number of paths
 rand_temp = rand(1,N);
 x0 = [rand_temp * 0; 
-      rand_temp * 10 + params.vd;
-      params.T*(rand_temp * 10 + params.vd) + rand(1,N) * 2 + 0.5]; % initial states
+      rand_temp * 20 + params.vd;
+      params.T*(rand_temp * 20 + params.vd) + rand(1,N) * 0.3]; % initial states
 
 % Time history
 x_hist = zeros(N, length(tt), 3);
 u_hist = zeros(N, length(tt)-1);
 h_hist = zeros(N, length(tt)-1);
 p_hist = zeros(N, length(tt)-1);
+
+Sigma_score = 0; % violation score
 
 for n = 1:N
     for k = 1:length(tt)-1
@@ -107,6 +109,11 @@ for n = 1:N
         u_hist(n, k) = u;
         h_hist(n, k) = h;
 
+        % Compute Sigma_score
+        if h < 0
+            Sigma_score = Sigma_score + 1;
+        end
+
         p_hist(n, k) = acc_learned.dcbf(x) * (acc_true.f(x) + acc_true.g(x) * u) + params.cbf.rate * acc_learned.cbf(x);
 
         % Run one time step propagation.
@@ -115,7 +122,7 @@ for n = 1:N
 end
 
 %% Violation score
-Sigma_score = sum(p_hist < -1e-4, "all") / (N*length(tt)-1) * 100;
+Sigma_score = Sigma_score / (N*length(tt)-1) * 100;
 fprintf("Sigma_score = %6.3f percent\n", Sigma_score);
 
 %% Plots
@@ -161,7 +168,7 @@ end
 ylabel("h(x_t)");
 xlabel("Time (s)");
 yline(0, 'r-', 'LineWidth',2);
-ylim([-0.5, 2.5]);
+%ylim([-0.1, inf]);
 set(gca, 'FontSize', 18);
 grid on;
 if use_cp
