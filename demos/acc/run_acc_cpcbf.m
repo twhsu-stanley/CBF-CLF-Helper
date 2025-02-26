@@ -37,7 +37,7 @@ cp_quantile = cp_quantile * use_cp; % setting cp_quantile = 0 is equivalent to u
 
 %% Implementation of the CP-CBF
 dt = 0.02;
-sim_T = 8;
+sim_T = 4;
 tt = 0:dt:sim_T;
 
 % System parameters
@@ -66,8 +66,8 @@ params.coefficients = coefficients;
 params.idx_x = idx_x;
 params.idx_u = idx_u;
 acc_learned = ACCSINDy(params);
-controller_nominal = @acc_learned.ctrlNominal; % proportional navigation
-Kp = 100; % gain for the proportional navigation
+controller_nominal = @acc_learned.ctrlNominal;
+Kp = 100; % P gain for the nominal controller
 controller_cpcbf = @acc_learned.ctrlCpCbfQp;
 controller_cbf = @acc_learned.ctrlCbfQp;
 
@@ -76,7 +76,7 @@ acc_true = ACC(params);
 dyn_true = @acc_true.dynamics;
 
 % Sample initial states within the safe set
-N = 20; % number of paths
+N = 30; % number of paths
 rand_temp = rand(1,N);
 x0 = [rand_temp * 0; 
       rand_temp * 10 + params.vd;
@@ -147,17 +147,26 @@ set(gca, 'FontSize', 14);
 grid on;
 
 figure;
+plot(tt(1:end-1), p_hist); hold on;
+ylabel("p CBF");
+set(gca, 'FontSize', 14);
+grid on;
+
+figure;
 for n = 1:N
     h = plot(tt(1:end-1), squeeze(h_hist(n,:,:))); hold on
     c = get(h, 'Color');
     set(h, 'Color', [c 0.9]);
 end
+ylabel("h(x_t)");
+xlabel("Time (s)");
 yline(0, 'r-', 'LineWidth',2);
-ylabel("CBF: h(x_t)");
-set(gca, 'FontSize', 14);
+ylim([-0.5, 2.5]);
+set(gca, 'FontSize', 18);
 grid on;
 if use_cp
-    exportgraphics(gcf, "plots/cpcbf_acc_cbf.pdf","Resolution",500);
+    exportgraphics(gcf, "plots/cpcbf_acc_h.pdf","Resolution",500);
 else
-    exportgraphics(gcf, "plots/cbf_acc_cbf.pdf","Resolution",500);
+    
+    exportgraphics(gcf, "plots/cbf_acc_h.pdf","Resolution",500);
 end

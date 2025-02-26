@@ -205,8 +205,12 @@ end
 draw_circle(p_o, r_o); hold on
 plot(x_d(1), x_d(2), 'r.', MarkerSize = 20); hold on
 grid on
-xlabel('x (m)');
-ylabel('y (m)');
+xlabel('p_x (m)');
+ylabel('p_y (m)');
+xticks(2:10);
+yticks(1:7);
+set(gca, 'FontSize', 18);
+ylim([-inf, inf]);
 if use_cp
     exportgraphics(gcf, "plots/cpcbf_dubins_car_2d.pdf","Resolution",500);
 else
@@ -219,15 +223,15 @@ for n = 1:N
     c = get(h, 'Color');
     set(h, 'Color', [c 0.35]);
 end
+set(gca, 'FontSize', 18);
 yline(0, 'r-', 'LineWidth',3)
+ylabel('h(x_t)');
 xlabel('Time (s)');
 grid on
 if use_cp
-    ylabel('CP-CBF: h(x_t)');
-    exportgraphics(gcf, "plots/cpcbf_dubins_car_cpcbf.pdf","Resolution",500);
+    exportgraphics(gcf, "plots/cpcbf_dubins_car_h.pdf","Resolution",500);
 else
-    ylabel('CBF: h(x_t)');
-    exportgraphics(gcf, "plots/cbf_dubins_car_cbf.pdf","Resolution",500);
+    exportgraphics(gcf, "plots/cbf_dubins_car_h.pdf","Resolution",500);
 end
 
 figure;
@@ -279,7 +283,7 @@ hold on
 th = 0:pi/50:2*pi;
 xunit = r * cos(th) + center(1);
 yunit = r * sin(th) + center(2);
-plot(xunit, yunit, 'r-', 'LineWidth', 5); hold on
+plot(xunit, yunit, 'r-', 'LineWidth', 3); hold on
 h = fill(xunit, yunit, 'r');
 set(h, 'FaceAlpha', 0.4);
 axis equal;

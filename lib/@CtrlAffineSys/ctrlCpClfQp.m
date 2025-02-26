@@ -58,7 +58,7 @@ function [u, slack, V, feas] = ctrlCpClfQp(obj, x, u_ref, cp_quantile)
     else
         % CLF constraint.
         A = LgV;
-        b = -LfV - cp_bound - obj.params.clf.rate * V; 
+        b = -LfV - cp_bound - obj.params.clf.rate * V;
         % Add input constraints if u_max or u_min exists.
         if isfield(obj.params, 'u_max')
             A = [A; eye(obj.udim)];

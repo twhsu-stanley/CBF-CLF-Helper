@@ -11,6 +11,11 @@ function clf = defineClf(obj, params, symbolic_state)
     P = lyap(A', Q); % Cost Matrix for quadratic CLF. (V = e'*P*e)
     clf = x' * P * x;
     
+    % Find c1: c1*||x||^2 <= V(x) = x'Px <= c2*||x||^2
+    obj.c1 = min(eig(P));
+    obj.c2 = max(eig(P));
+    %obj.c3 = params.clf.rate * obj.c1;
+    
     % LQR
     %{
     A = [0, 1;

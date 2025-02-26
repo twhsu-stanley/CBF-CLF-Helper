@@ -44,7 +44,7 @@ function [u, slack, V, feas, comp_time] = ctrlClfQp(obj, x, u_ref, with_slack, v
     if with_slack
         % CLF constraint.
         A = [LgV, -1];
-        b = -LfV-obj.params.clf.rate*V;                
+        b = -LfV-obj.params.clf.rate * V;
         % Add input constraints if u_max or u_min exists.
         if isfield(obj.params, 'u_max')
             A = [A; eye(obj.udim), zeros(obj.udim, 1);];
@@ -69,7 +69,7 @@ function [u, slack, V, feas, comp_time] = ctrlClfQp(obj, x, u_ref, with_slack, v
     else
         % CLF constraint.
         A = LgV;
-        b = -LfV-obj.params.clf.rate*V;                
+        b = -LfV-obj.params.clf.rate * V;
         % Add input constraints if u_max or u_min exists.
         if isfield(obj.params, 'u_max')
             A = [A; eye(obj.udim)];

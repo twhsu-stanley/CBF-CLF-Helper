@@ -20,7 +20,7 @@ params.I = params.m*params.l^2/3;
 params.Kp=6;
 params.Kd=5;
 
-params.clf.rate = 3;
+params.clf.rate = 60;
 params.weight.slack = 100000;
 
 x0 = [0.76; 0.05];

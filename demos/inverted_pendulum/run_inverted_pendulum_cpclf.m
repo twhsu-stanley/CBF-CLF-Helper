@@ -5,7 +5,7 @@ close all
 %% Loading the SYNDy model from Python
 pickle = py.importlib.import_module('pickle');
 %fh = py.open('..\..\..\pysindy\control_affine_models\saved_models\model_inverted_pendulum_sindy', 'rb');
-fh = py.open('..\..\sindy_models\model_inverted_pendulum_sindy', 'rb');
+fh = py.open('..\..\sindy_models\model_inverted_pendulum_traj_sindy', 'rb');
 P = pickle.load(fh); % pickle file loaded to Python variable
 fh.close();
 
@@ -55,7 +55,7 @@ params.Kd = 5;
 %params.u_min = -params.u_max;
 if use_cp
     params.weight.slack = 500;
-    %params.weight.input = 0.1;
+    %params.weight.input = 0.01;
 else
     params.weight.slack = 500;
     %params.weight.input = 0.01;
@@ -79,7 +79,7 @@ odeFun = dyn_true;
 
 %% Create a grid of states and sample initiall states from it
 resolution = 200;
-x_ = linspace(-pi/3, pi/3, resolution);
+x_ = linspace(-pi/2, pi/2, resolution);
 y_ = linspace(-pi*2, pi*2, resolution);
 state = zeros(resolution, resolution, 2);
 state_norm_square = zeros(resolution, resolution);
@@ -119,17 +119,13 @@ N = min(N, size(x0, 1));
 x0 = x0(randperm(length(x0)), :); % random shuffling
 x0 = x0(1:N,:);
 
-% Find c1: c1*||x||^2 <= V(x) <= c2*||x||^2
-ind_roa = find(V_ <= clf_level);
-c1 = min(V_(ind_roa) ./ state_norm_square(ind_roa));
-c2 = max(V_(ind_roa) ./ state_norm_square(ind_roa));
-
 % Estimate Lipchitz constant
+ind_roa = find(V_ <= clf_level);
 Lv = max(vecnorm(gradV_(ind_roa), 2, 3),[],"all"); 
 
 % Calculate the parameters of exponential stability (M and gamma)
 V0 = clf_level;
-M = V0/c1;
+%M = V0/ip_learned.c1;
 
 % Testing
 %N = 1;
@@ -180,9 +176,9 @@ for n = 1:N
         V_hist(n, k) = V;
         %V_hist(n, k) = x' * ip_learned.P_lqr * x;
 
-        p_hist(n, k) = ip_learned.dclf(x) * (ip_true.f(x) + ip_true.g(x) * u) + params.clf.rate * ip_learned.clf(x);
-        p_hat_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + params.clf.rate * ip_learned.clf(x);
-        p_cp_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + params.clf.rate * ip_learned.clf(x)...
+        p_hist(n, k) = ip_learned.dclf(x) * (ip_true.f(x) + ip_true.g(x) * u) + ip_learned.params.clf.rate * V;
+        p_hat_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + ip_learned.params.clf.rate * V;
+        p_cp_hist(n, k) = ip_learned.dclf(x) * (ip_learned.f(x) + ip_learned.g(x) * u) + ip_learned.params.clf.rate * V ...
                           + cp_quantile * norm(ip_learned.dclf(x), 2);
         p_err_hist(n, k) = ip_learned.dclf(x) * (ip_true.f(x) + ip_true.g(x) * u - ip_learned.f(x) - ip_learned.g(x) * u);
         cp_bound_hist(n, k) = cp_quantile * norm(ip_learned.dclf(x), 2);
@@ -207,13 +203,13 @@ plot(tt, squeeze(x_hist(:,:,1))); grid on
 %ylabel("theta (rad)"); 
 %xlabel('Time (s)'); 
 ylabel("$\theta$ (rad)","interpreter","latex");
-set(gca,'FontSize',14);
+set(gca,'FontSize',18);
 subplot(2, 1, 2);
 plot(tt, squeeze(x_hist(:,:,2))); grid on
 %xlabel('Time (s)'); ylabel("theta dot (rad/s)");
 xlabel('Time (s)'); 
 ylabel("$\dot{\theta}$ (rad/s)","interpreter","latex");
-set(gca,'FontSize',14);
+set(gca,'FontSize',18);
 if use_cp
     exportgraphics(gcf, "plots/cpclf_inverted_pendulum_states.pdf","Resolution",500);
 else
@@ -281,17 +277,16 @@ end
 
 figure;
 plot(tt(1:end-1), V_hist); hold on
-plot(tt(1:end-1), V0 * exp(-params.clf.rate * tt(1:end-1)), 'r--', 'LineWidth',1.5); hold on
+plot(tt(1:end-1), V0 * exp(-ip_learned.params.clf.rate * tt(1:end-1)), 'r--', 'LineWidth',1.5); hold on
 xlabel('Time (s)');
 grid on
-set(gca,'FontSize',14);
+set(gca,'FontSize',18);
+ylabel('V(x_t)');
 if use_cp
-    ylabel('CP-CLF: V(x_t)');
-    exportgraphics(gcf, "plots/cpclf_inverted_pendulum_cpclf.pdf","Resolution",800);
+    exportgraphics(gcf, "plots/cpclf_inverted_pendulum_V.pdf","Resolution",800);
 else
     %plot(tt(1:end-1), V0 * exp(-params.clf.rate * tt(1:end-1)) + Lv*cp_quantile_a/params.clf.rate * (1-exp(-params.clf.rate * tt(1:end-1))), 'b--');
-    ylabel('CLF: V(x_t)');
-    exportgraphics(gcf,"plots/clf_inverted_pendulum_clf.pdf","Resolution",800)
+    exportgraphics(gcf,"plots/clf_inverted_pendulum_V.pdf","Resolution",800)
 end
 
 figure;
