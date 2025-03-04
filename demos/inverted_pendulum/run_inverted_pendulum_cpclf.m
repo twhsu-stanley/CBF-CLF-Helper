@@ -80,7 +80,7 @@ odeFun = dyn_true;
 %% Create a grid of states and sample initiall states from it
 resolution = 200;
 x_ = linspace(-pi/2, pi/2, resolution);
-y_ = linspace(-pi*2, pi*2, resolution);
+y_ = linspace(-pi*3, pi*3, resolution);
 state = zeros(resolution, resolution, 2);
 state_norm_square = zeros(resolution, resolution);
 V_ = zeros(resolution, resolution);
@@ -120,8 +120,8 @@ x0 = x0(randperm(length(x0)), :); % random shuffling
 x0 = x0(1:N,:);
 
 % Estimate Lipchitz constant
-ind_roa = find(V_ <= clf_level);
-Lv = max(vecnorm(gradV_(ind_roa), 2, 3),[],"all"); 
+%ind_roa = find(V_ <= clf_level);
+%Lv = max(vecnorm(gradV_(ind_roa), 2, 3),[],"all"); 
 
 % Calculate the parameters of exponential stability (M and gamma)
 V0 = clf_level;
@@ -133,7 +133,7 @@ V0 = clf_level;
 %V0 = ip_learned.clf([pi/2; 0]);
 
 %% Run simulation
-dt = 0.001;
+dt = 0.005;
 T = 5;
 tt = 0:dt:T;
 
@@ -201,6 +201,18 @@ end
 %% Violation score
 Sigma_score = Sigma_score / (N*length(tt)-1) * 100;
 fprintf("Sigma_score = %6.3f percent\n", Sigma_score);
+
+%% Save trajectories
+saved_trajectories = [];
+saved_trajectories.time = tt;
+saved_trajectories.x_hist = x_hist;
+saved_trajectories.u_hist = u_hist;
+saved_trajectories.V_hist = V_hist;
+if use_cp
+    save("inverted_pendulum_cpclf_trajectories.mat", "saved_trajectories");
+else
+    save("inverted_pendulum_clf_trajectories.mat", "saved_trajectories");
+end
 
 %% Plots
 figure;

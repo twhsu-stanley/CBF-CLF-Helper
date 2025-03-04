@@ -36,7 +36,7 @@ use_cp = 1; % 1 or 0: whether to use conformal prediction
 cp_quantile = cp_quantile * use_cp; % setting cp_quantile = 0 is equivalent to using the regular cbf
 
 %% Implementation of the CP-CBF
-dt = 0.02;
+dt = 0.01;
 sim_T = 5;
 tt = 0:dt:sim_T;
 
@@ -124,6 +124,18 @@ end
 %% Violation score
 Sigma_score = Sigma_score / (N*length(tt)-1) * 100;
 fprintf("Sigma_score = %6.3f percent\n", Sigma_score);
+
+%% Save trajectories
+saved_trajectories = [];
+saved_trajectories.time = tt;
+saved_trajectories.x_hist = x_hist;
+saved_trajectories.u_hist = u_hist;
+saved_trajectories.V_hist = h_hist;
+if use_cp
+    save("acc_cpcbf_trajectories.mat", "saved_trajectories");
+else
+    save("acc_cbf_trajectories.mat", "saved_trajectories");
+end
 
 %% Plots
 figure;
